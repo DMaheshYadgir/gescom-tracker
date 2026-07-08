@@ -21,16 +21,26 @@
     #logoImg{width:160px;height:160px;border-radius:28px;box-shadow:0 8px 32px rgba(0,0,0,0.45);display:block;}
     #appTitle{font-size:22px;font-weight:bold;color:#fff;letter-spacing:0.5px;margin-bottom:6px;position:relative;z-index:1;}
     #appSub{font-size:14px;color:#F4A300;font-weight:bold;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;position:relative;z-index:1;}
-    #appOrg{font-size:13px;color:#9BBAD8;margin-bottom:40px;position:relative;z-index:1;}
+    #appOrg{font-size:13px;color:#9BBAD8;margin-bottom:32px;position:relative;z-index:1;}
+
+    /* Install button — shown before redirect */
+    #installBox{position:relative;z-index:1;width:100%;max-width:300px;display:none;}
+    #btnInstall{width:100%;background:#F4A300;color:#0B2545;border:none;padding:14px 20px;border-radius:10px;font-size:16px;font-weight:bold;cursor:pointer;margin-bottom:14px;box-shadow:0 4px 16px rgba(244,163,0,0.4);}
+    #btnOpen{width:100%;background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:13px 20px;border-radius:10px;font-size:15px;font-weight:bold;cursor:pointer;}
+    #installHint{font-size:11px;color:#9BBAD8;margin-top:12px;line-height:1.5;}
+
+    /* Loading state */
     #loadWrap{position:relative;z-index:1;width:100%;max-width:260px;}
     #loadLabel{font-size:13px;color:#9BBAD8;margin-bottom:10px;}
     #loadTrack{background:rgba(255,255,255,0.12);border-radius:6px;height:6px;overflow:hidden;}
     #loadBar{height:100%;border-radius:6px;background:linear-gradient(90deg,#F4A300,#FFD060);width:0%;transition:width 0.3s ease;}
-    #monthBadge{display:none;margin-top:20px;background:rgba(244,163,0,0.15);border:1px solid rgba(244,163,0,0.4);border-radius:20px;padding:5px 16px;font-size:13px;color:#F4A300;font-weight:bold;position:relative;z-index:1;}
+    #monthBadge{display:none;margin-top:16px;background:rgba(244,163,0,0.15);border:1px solid rgba(244,163,0,0.4);border-radius:20px;padding:5px 16px;font-size:13px;color:#F4A300;font-weight:bold;}
+
+    /* Error state */
     #errorBox{display:none;margin-top:24px;background:rgba(192,57,43,0.15);border:1px solid rgba(192,57,43,0.4);border-radius:10px;padding:16px 20px;max-width:300px;position:relative;z-index:1;}
     #errorBox p{font-size:13px;color:#F1948A;line-height:1.5;margin-bottom:12px;}
     #retryBtn{background:#F4A300;color:#0B2545;border:none;padding:9px 20px;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;width:100%;}
-    #footer{position:fixed;bottom:16px;left:0;right:0;text-align:center;font-size:11px;color:rgba(155,186,216,0.5);z-index:1;}
+    #footer{position:fixed;bottom:16px;left:0;right:0;text-align:center;font-size:11px;color:rgba(155,186,216,0.4);z-index:1;}
   </style>
 </head>
 <body>
@@ -39,61 +49,127 @@
   <div id="appSub">GESCOM &middot; KALABURAGI</div>
   <div id="appTitle">Disconnection Tracker</div>
   <div id="appOrg">Yadgir Division &mdash; Arrears Recovery Programme</div>
+
+  <!-- Install prompt — shown when PWA install is available -->
+  <div id="installBox">
+    <button id="btnInstall" onclick="doInstall()">&#11015; Install App</button>
+    <button id="btnOpen" onclick="doOpen()">Open App</button>
+    <div id="installHint">Install once &mdash; tap the icon on your home screen every time.<br>No need to open WhatsApp for the link again.</div>
+  </div>
+
+  <!-- Loading state -->
   <div id="loadWrap">
-    <div id="loadLabel">Loading current month's app&hellip;</div>
+    <div id="loadLabel">Loading&hellip;</div>
     <div id="loadTrack"><div id="loadBar"></div></div>
     <div id="monthBadge"></div>
   </div>
+
   <div id="errorBox">
-    <p id="errorMsg">Unable to load the app. Please check your internet connection and try again.</p>
+    <p id="errorMsg">Unable to load. Check internet and try again.</p>
     <button id="retryBtn" onclick="loadConfig()">Retry</button>
   </div>
 </div>
 <div id="footer">GESCOM Yadgir Division &nbsp;&middot;&nbsp; Arrears Recovery Tracker</div>
+
 <script>
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}
-var CONFIG_URL='https://DMaheshYadgir.github.io/gescom-tracker/config.json';
-var _pct=0;
-function setProgress(p){_pct=p;document.getElementById('loadBar').style.width=p+'%';}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+
+var CONFIG_URL = 'https://DMaheshYadgir.github.io/gescom-tracker/config.json';
+var _appUrl = null;
+var _deferredPrompt = null;
+var _pct = 0;
+
+/* Capture the install prompt — this fires BEFORE Chrome shows its own
+   install UI, giving us a chance to show our own button instead */
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();        // stop Chrome from showing its own prompt
+  _deferredPrompt = e;       // save it for our Install button
+  if (_appUrl) showInstallUI_();  // show buttons if config already loaded
+});
+
+function setProgress(p){
+  _pct=p;
+  document.getElementById('loadBar').style.width=p+'%';
+}
 function animateTo(target,dur,cb){
   var s=_pct,t0=Date.now();
-  function step(){var e=Date.now()-t0,p=Math.min(e/dur,1),ez=1-Math.pow(1-p,3);
+  function step(){
+    var e=Date.now()-t0,p=Math.min(e/dur,1),ez=1-Math.pow(1-p,3);
     setProgress(s+(target-s)*ez);
-    if(p<1)requestAnimationFrame(step); else if(cb)cb();}
+    if(p<1)requestAnimationFrame(step); else if(cb)cb();
+  }
   requestAnimationFrame(step);
 }
-function loadConfig(){
-  document.getElementById('errorBox').style.display='none';
-  document.getElementById('loadWrap').style.display='block';
-  document.getElementById('loadLabel').textContent="Loading current month's app\u2026";
-  animateTo(40,600,function(){
-    fetch(CONFIG_URL+'?v='+Date.now())
-      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+
+function showInstallUI_() {
+  /* Show the Install / Open buttons, hide the loading bar */
+  document.getElementById('loadWrap').style.display = 'none';
+  document.getElementById('installBox').style.display = 'block';
+  var b = document.getElementById('monthBadge');
+  b.style.display = 'inline-block';
+}
+
+function doInstall() {
+  if (!_deferredPrompt) { doOpen(); return; }
+  _deferredPrompt.prompt();
+  _deferredPrompt.userChoice.then(function(result) {
+    _deferredPrompt = null;
+    /* After install choice, open the app */
+    if (_appUrl) window.location.href = _appUrl;
+  });
+}
+
+function doOpen() {
+  if (_appUrl) window.location.href = _appUrl;
+}
+
+function loadConfig() {
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('loadWrap').style.display = 'block';
+  document.getElementById('installBox').style.display = 'none';
+  document.getElementById('loadLabel').textContent = 'Loading\u2026';
+  setProgress(0);
+
+  animateTo(40, 600, function(){
+    fetch(CONFIG_URL + '?v=' + Date.now())
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(function(cfg){
-        if(!cfg.appUrl)throw new Error('App URL missing in config.');
-        animateTo(80,400,function(){
-          var b=document.getElementById('monthBadge');
-          b.textContent='\uD83D\uDCC5 '+(cfg.month||'Current Month');
-          b.style.display='inline-block';
-          document.getElementById('loadLabel').textContent='Redirecting to '+(cfg.month||'app')+'\u2026';
-          animateTo(100,300,function(){
-            setTimeout(function(){window.location.replace(cfg.appUrl);},500);
-          });
+        if(!cfg.appUrl) throw new Error('URL missing');
+        _appUrl = cfg.appUrl;
+
+        var b = document.getElementById('monthBadge');
+        b.textContent = '\uD83D\uDCC5 ' + (cfg.month || 'Current Month');
+
+        animateTo(100, 400, function(){
+          if (_deferredPrompt) {
+            /* Install prompt is available — show Install/Open buttons */
+            showInstallUI_();
+          } else {
+            /* No install prompt (already installed, or not eligible) —
+               redirect directly after a short pause */
+            document.getElementById('loadLabel').textContent =
+              'Redirecting to ' + (cfg.month || 'app') + '\u2026';
+            setTimeout(function(){ window.location.href = _appUrl; }, 800);
+          }
         });
       })
       .catch(function(err){
         setProgress(0);
         document.getElementById('loadBar').style.width='0%';
         document.getElementById('errorBox').style.display='block';
-        document.getElementById('monthBadge').style.display='none';
-        document.getElementById('loadLabel').textContent='';
-        document.getElementById('errorMsg').textContent=!navigator.onLine
-          ?'You are offline. Connect to internet and tap Retry.'
-          :'Could not load app config. Tap Retry or contact the Division Office. ('+err.message+')';
+        document.getElementById('loadWrap').style.display='none';
+        document.getElementById('errorMsg').textContent = !navigator.onLine
+          ? 'You are offline. Connect to internet and tap Retry.'
+          : 'Could not load config. Tap Retry or contact the Division Office. (' + err.message + ')';
       });
   });
 }
-document.addEventListener('DOMContentLoaded',function(){setTimeout(loadConfig,300);});
+
+document.addEventListener('DOMContentLoaded', function(){
+  setTimeout(loadConfig, 300);
+});
 </script>
 </body>
 </html>
