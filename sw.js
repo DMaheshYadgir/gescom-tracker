@@ -1,7 +1,6 @@
-/* Service Worker — caches the splash page and icons so the gateway
-   loads instantly even on slow connections. The config.json is always
-   fetched fresh (no caching) so the redirect always uses the latest URL. */
-var CACHE = 'gescom-gateway-v1';
+/* Service Worker — caches splash page, icons, AND config.json
+   so the gateway works offline after first visit. */
+var CACHE = 'gescom-gateway-v2';
 var PRECACHE = [
   './',
   './index.html',
@@ -26,8 +25,27 @@ self.addEventListener('activate', function(e) {
 });
 
 self.addEventListener('fetch', function(e) {
-  /* Always fetch config.json fresh — never serve from cache */
-  if (e.request.url.indexOf('config.json') !== -1) return;
+  var url = e.request.url;
+
+  /* config.json — network first, fall back to cache.
+     This means the gateway can redirect offline using the last known URL. */
+  if (url.indexOf('config.json') !== -1) {
+    e.respondWith(
+      fetch(e.request.url.split('?')[0] + '?v=' + Date.now())
+        .then(function(response) {
+          var cloned = response.clone();
+          caches.open(CACHE).then(function(cache){ cache.put(e.request.url.split('?')[0], cloned); });
+          return response;
+        })
+        .catch(function() {
+          return caches.match(e.request.url.split('?')[0]) ||
+                 caches.match('./config.json');
+        })
+    );
+    return;
+  }
+
+  /* Everything else — cache first */
   e.respondWith(
     caches.match(e.request).then(function(cached){
       return cached || fetch(e.request);
