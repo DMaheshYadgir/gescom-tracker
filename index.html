@@ -117,12 +117,12 @@ function doInstall() {
   _deferredPrompt.userChoice.then(function(result) {
     _deferredPrompt = null;
     /* After install choice, open the app */
-    if (_appUrl) window.location.href = _appUrl;
+    if (_appUrl) window.location.replace(_appUrl);
   });
 }
 
 function doOpen() {
-  if (_appUrl) window.location.href = _appUrl;
+  if (_appUrl) window.location.replace(_appUrl);
 }
 
 function loadConfig() {
@@ -151,7 +151,7 @@ function loadConfig() {
                redirect directly after a short pause */
             document.getElementById('loadLabel').textContent =
               'Redirecting to ' + (cfg.month || 'app') + '\u2026';
-            setTimeout(function(){ window.location.href = _appUrl; }, 800);
+            setTimeout(function(){ window.location.replace(_appUrl); }, 800);
           }
         });
       })
