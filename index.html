@@ -160,6 +160,7 @@ function loadConfig() {
         document.getElementById('loadBar').style.width='0%';
         document.getElementById('errorBox').style.display='block';
         document.getElementById('loadWrap').style.display='none';
+        // show helpful offline message
         document.getElementById('errorMsg').textContent = !navigator.onLine
           ? 'You are offline. Connect to internet and tap Retry.'
           : 'Could not load config. Tap Retry or contact the Division Office. (' + err.message + ')';
